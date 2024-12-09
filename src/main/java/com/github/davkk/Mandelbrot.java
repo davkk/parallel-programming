@@ -8,23 +8,23 @@ import java.io.IOException;
 import javax.imageio.ImageIO;
 
 public class Mandelbrot {
-    public static BufferedImage mandelbrot(
-            int size,
+    public static void generate(
+            BufferedImage image,
+            int y0,
+            double size,
             double minRe,
             double maxRe,
             double minIm,
             double maxIm,
-            int maxIterations) {
+            int maxIterations //
+    ) {
+        double pxRe = (maxRe - minRe) / (image.getWidth() - 1);
+        double pxIm = (maxIm - minIm) / (image.getHeight() - 1);
 
-        BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_RGB);
-
-        double pxRe = (maxRe - minRe) / (size - 1);
-        double pxIm = (maxIm - minIm) / (size - 1);
-
-        for (int y = 0; y < size; y++) {
+        for (int y = y0; y < Math.min(y0 + size, image.getHeight()); y++) {
             double cIm = maxIm - y * pxIm;
 
-            for (int x = 0; x < size; x++) {
+            for (int x = 0; x < image.getWidth(); x++) {
                 double cRe = minRe + x * pxRe;
 
                 double zRe = 0;
@@ -49,28 +49,15 @@ public class Mandelbrot {
                 image.setRGB(x, y, color);
             }
         }
-
-        return image;
-    }
-
-    public static void benchmark(int size, int repeat) {
-        var start = System.nanoTime();
-        for (int i = 0; i < repeat; i++) {
-            mandelbrot(size, -2.1, 0.6, -1.2, 1.2, 200);
-        }
-        var end = System.nanoTime();
-        var time = (end - start) / 1e9;
-        System.out.printf("%d %f\n", size, time / (float) repeat);
     }
 
     public static void main(String[] args) throws IOException {
         assert args.length > 0;
-
         var size = Integer.parseInt(args[0]);
 
-        benchmark(size, 10);
+        BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_INT_RGB);
+        generate(image, 0, size, -0.7435, -0.7395, 0.1312, 0.1352, 200);
 
-        BufferedImage image = mandelbrot(size, -0.7435, -0.7395, 0.1312, 0.1352, 200);
         ImageIO.write(image, "png", new File(String.format("output/mandelbrot_%d.png", size)));
     }
 }
