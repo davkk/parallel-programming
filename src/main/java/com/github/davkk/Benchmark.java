@@ -44,21 +44,24 @@ public class Benchmark {
         for (int i = 0; i < repeat; i++) {
             runFunc.accept(image);
         }
+
+        if (type.equals("pool-once")) {
+            pool.shutdown();
+
+            try {
+                if (!pool.awaitTermination(1, TimeUnit.MINUTES)) {
+                    pool.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                pool.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+
         var end = System.nanoTime();
         var time = (end - start) / 1e9;
 
         System.out.printf("%d %f\n", size, time / (float) repeat);
-
-        pool.shutdown();
-
-        try {
-            if (!pool.awaitTermination(1, TimeUnit.MINUTES)) {
-                pool.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            pool.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
 
         try {
             ImageIO.write(image, "png", new File("test.png"));
@@ -110,8 +113,6 @@ public class Benchmark {
                 Mandelbrot.generate(image, y0, blockSize, minRe, maxRe, minIm, maxIm, 200);
             });
         }
-
-        pool.shutdown();
 
         try {
             if (!pool.awaitTermination(1, TimeUnit.MINUTES)) {
