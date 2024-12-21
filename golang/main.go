@@ -8,66 +8,54 @@ import (
 	"os"
 )
 
-type Params struct {
-	size          int
-	minRe         float64
-	maxRe         float64
-	minIm         float64
-	maxIm         float64
-	maxIterations int
+type Mandelbrot struct {
+	minRe   float64
+	maxRe   float64
+	minIm   float64
+	maxIm   float64
+	maxIter int
 }
 
-func mandelbrot(img *image.RGBA, y0 int, params Params) {
-	width := img.Bounds().Dx()
-	pxRe := (params.maxRe - params.minRe) / float64((width - 1))
-	pxIm := (params.maxIm - params.minIm) / float64((width - 1))
+func (mb *Mandelbrot) calculate(x, y float64) color.Color {
+	c := complex(x, y)
+	z := complex(0, 0)
+	for i := 0; i < mb.maxIter; i++ {
+		if real(z)*real(z)+imag(z)*imag(z) > 4 {
+			hue := float64(i) / float64(mb.maxIter) * 2.5
+			r, g, b := hsb.HSBToRGB(hue, 1.0, 1.0)
+			return color.RGBA{r, g, b, 255}
+		}
+		z = z*z + c
+	}
+	return color.Black
+}
 
-	for y := y0; y < min(y0+width, params.size); y++ {
-		cIm := params.maxIm - float64(y)*pxIm
-
-		for x := 0; x < width; x++ {
-			cRe := params.minRe + float64(x)*pxRe
-
-			zRe := 0.0
-			zIm := 0.0
-			iterations := 0
-
-			for zRe*zRe+zIm*zIm <= 4 && iterations < params.maxIterations {
-				nextRe := zRe*zRe - zIm*zIm + cRe
-				nextIm := 2*zRe*zIm + cIm
-
-				zRe = nextRe
-				zIm = nextIm
-
-				iterations++
-			}
-
-			hue := float64(iterations) / float64(params.maxIterations) * 2.5
-			saturation := 1.0
-			brightness := 1.0
-			if iterations == params.maxIterations {
-				brightness = 0.0
-			}
-
-			r, g, b := hsb.HSBToRGB(hue, saturation, brightness)
-			img.SetRGBA(x, y, color.RGBA{r, g, b, 255})
+func (mb *Mandelbrot) render(img *image.RGBA, size int) {
+	dx := (mb.maxRe - mb.minRe) / float64(size)
+	dy := (mb.maxIm - mb.minIm) / float64(size)
+	for py := 0; py < size; py++ {
+		y := mb.minIm + float64(py)*dy
+		for px := 0; px < size; px++ {
+			x := mb.minRe + float64(px)*dx
+			col := mb.calculate(x, y)
+			img.Set(px, py, col)
 		}
 	}
-
 }
 
 func main() {
-	size := 8196
+	size := 2048
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 
-	mandelbrot(img, 0, Params{
-		size:          size,
-		minRe:         -2.0,
-		maxRe:         1.0,
-		minIm:         -1.5,
-		maxIm:         1.5,
-		maxIterations: 200,
-	})
+	mandelbrot := Mandelbrot{
+		minRe:   -2.0,
+		maxRe:   1.0,
+		minIm:   -1.5,
+		maxIm:   1.5,
+		maxIter: 200,
+	}
+
+	mandelbrot.render(img, size)
 
 	file, _ := os.Create("output.png")
 	defer file.Close()
