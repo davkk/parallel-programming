@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"image"
 	"image/color"
@@ -8,8 +9,8 @@ import (
 	"math"
 	"os"
 	"runtime"
-	"strconv"
 	"sync"
+	"time"
 )
 
 func HSBToRGB(h, s, v float64) (uint8, uint8, uint8) {
@@ -77,7 +78,9 @@ func (mb *Mandelbrot) calculate(x, y float64) color.Color {
 }
 
 func (mb *Mandelbrot) render(img *image.RGBA, block Block) {
-	defer mb.wg.Done()
+	if mb.wg != nil {
+		defer mb.wg.Done()
+	}
 
 	dx := (mb.maxRe - mb.minRe) / float64(img.Rect.Dx())
 	dy := (mb.maxIm - mb.minIm) / float64(img.Rect.Dy())
@@ -92,24 +95,14 @@ func (mb *Mandelbrot) render(img *image.RGBA, block Block) {
 	}
 }
 
-func main() {
-	size, _ := strconv.Atoi(os.Args[1])
-	img := image.NewRGBA(image.Rect(0, 0, size, size))
-
+func mandelbrotParallel(mandelbrot *Mandelbrot, img *image.RGBA) {
 	cores := runtime.NumCPU()
+	size := img.Bounds().Size().X
 	gridSize := int(math.Sqrt(float64(cores)))
 	blockSize := size / gridSize
 
 	var wg sync.WaitGroup
-
-	mandelbrot := Mandelbrot{
-		minRe:   -2.0,
-		maxRe:   1.0,
-		minIm:   -1.5,
-		maxIm:   1.5,
-		maxIter: 200,
-		wg:      &wg,
-	}
+	mandelbrot.wg = &wg
 
 	for y := 0; y < size; y += blockSize {
 		for x := 0; x < size; x += blockSize {
@@ -129,10 +122,66 @@ func main() {
 	}
 
 	wg.Wait()
+}
 
-	filename := fmt.Sprintf("mandelbrot-%d.png", size)
-	file, _ := os.Create(filename)
-	defer file.Close()
+const (
+	SERIAL   = "serial"
+	PARALLEL = "parallel"
+)
 
-	png.Encode(file, img)
+func main() {
+	filepath := flag.String("outfile", "", "file to save output to")
+	mode := flag.String("mode", SERIAL, "mode of execution")
+	saveImage := flag.Bool("save-image", false, "mode of execution")
+	flag.Parse()
+
+	var outfile *os.File
+
+	if *filepath == "" {
+		outfile = os.Stdout
+	} else {
+		var err error
+		outfile, err = os.Create(*filepath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating file %s: %v\n", *filepath, err)
+			os.Exit(1)
+		}
+		defer outfile.Close()
+	}
+
+	mandelbrot := Mandelbrot{
+		minRe:   -2.0,
+		maxRe:   1.0,
+		minIm:   -1.5,
+		maxIm:   1.5,
+		maxIter: 200,
+	}
+
+	imageSaved := false
+
+	for size := 16; size < 1<<14; size *= 2 {
+		img := image.NewRGBA(image.Rect(0, 0, size, size))
+		start := time.Now()
+
+		repeat := 10.0
+		for i := 0.0; i < repeat; i++ {
+			switch *mode {
+			case SERIAL:
+				mandelbrot.render(img, Block{0, 0, size, size})
+			case PARALLEL:
+				mandelbrotParallel(&mandelbrot, img)
+			}
+		}
+
+		duration := float64(time.Since(start).Microseconds()) / repeat
+		fmt.Fprintln(outfile, size, duration)
+
+		if *saveImage && !imageSaved {
+			imageSaved = true
+			filename := fmt.Sprintf("mandelbrot-%d.png", size)
+			file, _ := os.Create(filename)
+			defer file.Close()
+			png.Encode(file, img)
+		}
+	}
 }
